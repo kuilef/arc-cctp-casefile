@@ -2,6 +2,8 @@
 
 This file records the scope of verification. Exact terminal results and commit/CI URLs are reported in the delivery response and visible in GitHub Actions.
 
+Publication verification: [GitHub Actions run 37847024981](https://github.com/kuilef/arc-cctp-casefile/actions/runs/37847024981) completed successfully for commit `ca55b0fcdefbd1ef8e725bc33cdfc5fa05b8fa14` at 2026-10-08 21:29:19 UTC. Both Windows and Ubuntu Node22 jobs passed lint, typecheck, 72 offline tests, build and dependency audit; Ubuntu also passed all 3 Chromium smoke tests. The documentation-only delivery update is checked by the same workflow; its exact final commit and CI result are provided in the delivery response.
+
 Local final checks on amethyst / Windows / Node20.19.3: **72 offline tests passed, 0 failed; 3 Chromium UI smoke tests passed**. Lint with warnings treated as errors, TypeScript check, production build, CLI JSON/Markdown/history replay and npm audit passed (0 vulnerabilities). The independent review found five defects; seven red regression assertions reproduced them and all passed after the fixes. No deferred review findings. Final publication CI is required for the exact published commit, not inferred from these local results.
 
 - Pure evaluator: synthetic source/attestation/destination vectors; explicit multi-message selection, route/contracts/token/immutable mismatches, version failure, caller restrictions, source placeholder/attested bytes32 nonce, expiry, fee/gross/net, ambiguity, failed/null receipts, provenance and deterministic replay.
@@ -19,4 +21,4 @@ Pending evidence: publicly documented source hash on Base, exact corresponding d
 
 ## Publication boundary
 
-Only original source, synthetic fixtures, docs, lockfile, MIT license and CI are published. No node_modules, compiled binaries, local exports, raw private provider responses or credentials. No public service deployment, grant submission, contact, KYC or payout-wallet action was performed.
+Only original source, synthetic fixtures/example casefiles, docs, lockfile, MIT license and CI are published. No node_modules, compiled binaries, private local exports, raw private provider responses or credentials. No public service deployment, grant submission, contact, KYC or payout-wallet action was performed.
