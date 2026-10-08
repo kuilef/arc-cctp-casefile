@@ -38,6 +38,19 @@ function stage(
 ): Stage {
   return { status, reason, ...extra };
 }
+function receiptMatches(r: any, requestedHash: string | undefined) {
+  return (
+    r !== null &&
+    typeof r === "object" &&
+    !Array.isArray(r) &&
+    typeof requestedHash === "string" &&
+    /^0x[\da-f]{64}$/i.test(requestedHash) &&
+    typeof r.transactionHash === "string" &&
+    /^0x[\da-f]{64}$/i.test(r.transactionHash) &&
+    eq(r.transactionHash, requestedHash) &&
+    (r.status === "0x0" || r.status === "0x1")
+  );
+}
 function events(r: any) {
   if (!r || !Array.isArray(r.logs) || r.logs.length > 5000)
     throw Error("malformed_receipt");
@@ -162,10 +175,17 @@ export function evaluate(input: Input) {
     return result;
   }
   const sr = input.source.value;
-  if (!sr) {
+  if (sr === null) {
     result.source = stage(
       "null_receipt",
       "Source RPC returned null; missing, pending or unavailable cannot be distinguished.",
+    );
+    return result;
+  }
+  if (!receiptMatches(sr, input.sourceHash)) {
+    result.source = stage(
+      "unknown",
+      "Invalid source receipt object, status or transaction identity.",
     );
     return result;
   }
@@ -173,13 +193,6 @@ export function evaluate(input: Input) {
     result.source = stage(
       "failed_receipt",
       "Source receipt reports execution failure.",
-    );
-    return result;
-  }
-  if (sr.status !== "0x1" || !eq(sr.transactionHash, input.sourceHash)) {
-    result.source = stage(
-      "unknown",
-      "Invalid source receipt status or transaction identity.",
     );
     return result;
   }
@@ -381,10 +394,17 @@ export function evaluate(input: Input) {
     return result;
   }
   const dr = input.destination.value;
-  if (!dr) {
+  if (dr === null) {
     result.destination = stage(
       "null_receipt",
       "Destination RPC returned null; execution not observed.",
+    );
+    return result;
+  }
+  if (!receiptMatches(dr, input.destinationHash)) {
+    result.destination = stage(
+      "unknown",
+      "destination_receipt_identity_or_status_mismatch",
     );
     return result;
   }
@@ -396,12 +416,6 @@ export function evaluate(input: Input) {
     return result;
   }
   try {
-    if (
-      dr.status !== "0x1" ||
-      !input.destinationHash ||
-      !eq(dr.transactionHash, input.destinationHash)
-    )
-      throw Error("destination_receipt_identity_or_status_mismatch");
     const es = events(dr);
     const received = es.filter(
       (e: any) => e.name === "MessageReceived" && eq(e.address, ARC.mt),
@@ -475,17 +489,52 @@ export function evaluate(input: Input) {
   }
   return result;
 }
+export type ObservationOrigin =
+  | "fixture-replay"
+  | "live-collected"
+  | "imported-unverified";
 export type Casefile = {
   schemaVersion: 1;
   route: "base-arc-mainnet";
   sourceHash: string;
   observations: {
     recordedAt: string;
+    origin: ObservationOrigin;
     input: Input;
     analysis: ReturnType<typeof evaluate>;
   }[];
 };
-export function normalizeCasefile(previous: Casefile): Casefile {
+export const MAX_CASEFILE_BYTES = 2_000_000;
+function boundedText(text: string) {
+  if (new TextEncoder().encode(text).byteLength > MAX_CASEFILE_BYTES)
+    throw Error("casefile_byte_limit_2000000_download_and_start_new_casefile");
+  return text;
+}
+export function serializeCasefile(file: Casefile) {
+  const text = boundedText(`${JSON.stringify(file, null, 2)}\n`);
+  // Reserve the longer import marker so every own export can be reimported.
+  boundedText(
+    `${JSON.stringify(
+      {
+        ...file,
+        observations: file.observations.map((o) => ({
+          ...o,
+          origin: "imported-unverified",
+        })),
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return text;
+}
+export function importCasefile(text: string): Casefile {
+  return normalizeCasefile(JSON.parse(boundedText(text)), true);
+}
+export function normalizeCasefile(
+  previous: Casefile,
+  imported = false,
+): Casefile {
   if (
     previous?.schemaVersion !== 1 ||
     previous.route !== "base-arc-mainnet" ||
@@ -495,6 +544,7 @@ export function normalizeCasefile(previous: Casefile): Casefile {
     previous.observations.length > 100
   )
     throw Error("incompatible_casefile_history");
+  serializeCasefile(previous);
   const observations = previous.observations.map((o) => {
     if (
       !o?.input ||
@@ -521,14 +571,24 @@ export function normalizeCasefile(previous: Casefile): Casefile {
       )
         throw Error("invalid_history_provenance");
     }
-    return { ...o, analysis: evaluate(o.input) };
+    const origin: ObservationOrigin =
+      imported ||
+      !["fixture-replay", "live-collected", "imported-unverified"].includes(
+        o.origin,
+      )
+        ? "imported-unverified"
+        : o.origin;
+    return { ...o, origin, analysis: evaluate(o.input) };
   });
-  return { ...previous, observations };
+  const normalized = { ...previous, observations };
+  serializeCasefile(normalized);
+  return normalized;
 }
 export function appendCasefile(
   input: Input,
   previous?: Casefile,
   now = new Date().toISOString(),
+  origin: ObservationOrigin = "imported-unverified",
 ): Casefile {
   if ((previous?.observations?.length ?? 0) >= 100)
     throw Error("history_limit_100_download_and_start_new_casefile");
@@ -541,55 +601,63 @@ export function appendCasefile(
       previous.observations.length > 100)
   )
     throw Error("incompatible_casefile_history");
-  return {
+  const next: Casefile = {
     schemaVersion: 1,
     route: "base-arc-mainnet",
     sourceHash: input.sourceHash,
     observations: [
       ...(previous ? normalizeCasefile(previous).observations : []),
-      { recordedAt: now, input, analysis: evaluate(input) },
+      { recordedAt: now, origin, input, analysis: evaluate(input) },
     ],
   };
+  serializeCasefile(next);
+  return next;
 }
 export function markdown(file: Casefile) {
-  return [
-    `# Arc CCTP Casefile`,
-    `Route: Base mainnet → Arc mainnet`,
-    `Source: ${file.sourceHash}`,
-    `Observations: ${file.observations.length}`,
-    `Provider evidence; no recovery or funds return promise.`,
-    ...file.observations.flatMap((o, i) => [
-      `\n## Observation ${i + 1} — ${o.recordedAt} (${o.input.mode})`,
-      ...(["source", "attestation", "destination"] as const).map(
-        (k) => `- ${k}: **${o.analysis[k].status}** — ${o.analysis[k].reason}`,
-      ),
-      `- Coverage: ${JSON.stringify(o.analysis.coverage)}`,
-      `- Provenance: ${JSON.stringify(
-        Object.fromEntries(
-          [
-            "sourceChain",
-            "destinationChain",
-            "source",
-            "iris",
-            "destination",
-            "head",
-          ].map((k) => {
-            const x = (o.input as any)[k];
-            return [
-              k,
-              {
-                status: x.status,
-                observedAt: x.observedAt,
-                provenance: x.provenance,
-                httpStatus: x.httpStatus,
-                error: x.error,
-              },
-            ];
-          }),
+  serializeCasefile(file);
+  return boundedText(
+    [
+      `# Arc CCTP Casefile`,
+      `Route: Base mainnet → Arc mainnet`,
+      `Source: ${file.sourceHash}`,
+      `Observations: ${file.observations.length}`,
+      `Provider evidence; no recovery or funds return promise.`,
+      ...file.observations.flatMap((o, i) => [
+        `\n## Observation ${i + 1} — ${o.recordedAt} (${o.origin})`,
+        `- Local origin: ${o.origin}. Input-declared mode is informational only. Imported observations are unverified.`,
+        ...(["source", "attestation", "destination"] as const).map(
+          (k) =>
+            `- ${k}: **${o.analysis[k].status}** — ${o.analysis[k].reason}`,
         ),
-      )}`,
-      `- Evidence details: ${JSON.stringify({ source: o.analysis.source, destination: o.analysis.destination, attestation: o.analysis.attestation })}`,
-      ...o.analysis.limitations.map((x) => `- Limit: ${x}`),
-    ]),
-  ].join("\n");
+        `- Coverage: ${JSON.stringify(o.analysis.coverage)}`,
+        `- Provenance: ${JSON.stringify(
+          Object.fromEntries(
+            [
+              "sourceChain",
+              "destinationChain",
+              "source",
+              "iris",
+              "destination",
+              "head",
+            ].map((k) => {
+              const x = (o.input as any)[k];
+              return [
+                k,
+                {
+                  status: x.status,
+                  observedAt: x.observedAt,
+                  provenance: x.provenance,
+                  httpStatus: x.httpStatus,
+                  error: x.error,
+                },
+              ];
+            }),
+          ),
+        )}`,
+        `- Evidence details: ${JSON.stringify({ source: o.analysis.source, destination: o.analysis.destination, attestation: o.analysis.attestation })}`,
+        ...o.analysis.limitations.map((x) => `- Limit: ${x}`),
+      ]),
+      "",
+    ].join("\n"),
+  );
 }

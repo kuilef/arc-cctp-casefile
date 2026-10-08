@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
-import { appendCasefile } from "../../src/casefile";
+import { appendCasefile, serializeCasefile } from "../../src/casefile";
 import { fixture } from "../helpers";
+import { readFile } from "node:fs/promises";
 let child: ChildProcess;
 let url: string;
 test.beforeAll(async () => {
@@ -86,5 +87,77 @@ test("local import preserves timestamp and recomputes claims", async ({
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
+  ).toBe(true);
+});
+
+test("oversized append preserves the imported prior history and raw evidence", async ({
+  page,
+}) => {
+  const input = JSON.parse(await readFile("fixtures/multi.json", "utf8"));
+  input.source.value.providerPadding = "x".repeat(600_000);
+  let report = appendCasefile(input);
+  report = appendCasefile(input, report);
+  report = appendCasefile(input, report);
+  await page.goto(url);
+  await page.locator("#import").setInputFiles({
+    name: "large-history.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(serializeCasefile(report)),
+  });
+  await expect(page.locator(".history-row")).toHaveCount(3);
+  await page.locator("#message-select").selectOption("1");
+  await expect(page.locator("#notice")).toContainText("casefile_byte_limit");
+  await expect(page.locator(".history-row")).toHaveCount(3);
+  const pending = page.waitForEvent("download");
+  await page.locator("#json").click();
+  const stream = await (await pending).createReadStream();
+  if (!stream) throw Error("Missing download stream");
+  let output = "";
+  for await (const chunk of stream) output += chunk.toString();
+  const saved = JSON.parse(output);
+  expect(saved.observations).toHaveLength(3);
+  expect(saved.observations[0].recordedAt).toBe(
+    report.observations[0].recordedAt,
+  );
+  expect(
+    saved.observations.every(
+      (o: any) =>
+        o.origin === "imported-unverified" &&
+        o.input.source.value.providerPadding.length === 600_000,
+    ),
+  ).toBe(true);
+});
+
+test("imported live claims remain visibly unverified after explicit selection and export", async ({
+  page,
+}) => {
+  const input = JSON.parse(await readFile("fixtures/multi.json", "utf8"));
+  input.mode = "live";
+  const report = appendCasefile(input);
+  (report.observations[0] as any).origin = "live-collected";
+  await page.goto(url);
+  await page.locator("#import").setInputFiles({
+    name: "untrusted-live.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(report)),
+  });
+  await expect(page.locator("#notice")).toContainText("IMPORTED UNVERIFIED");
+  await page.locator("#message-select").selectOption("1");
+  await expect(page.locator("#notice")).toContainText("IMPORTED UNVERIFIED");
+  await expect(page.locator("#notice")).not.toContainText(
+    "PUBLIC PROVIDER OBSERVATION",
+  );
+  await expect(page.locator("#history")).toContainText("imported-unverified");
+  const pending = page.waitForEvent("download");
+  await page.locator("#json").click();
+  const download = await pending;
+  const stream = await download.createReadStream();
+  if (!stream) throw Error("Missing download stream");
+  let output = "";
+  for await (const chunk of stream) output += chunk.toString();
+  const exported = JSON.parse(output);
+  expect(exported.observations).toHaveLength(2);
+  expect(
+    exported.observations.every((o: any) => o.origin === "imported-unverified"),
   ).toBe(true);
 });

@@ -1,10 +1,13 @@
 import "./style.css";
 import {
   appendCasefile,
-  normalizeCasefile,
+  importCasefile,
+  serializeCasefile,
+  MAX_CASEFILE_BYTES,
   markdown,
   type Casefile,
   type Input,
+  type ObservationOrigin,
 } from "./casefile";
 const get = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
@@ -13,6 +16,7 @@ const source = get<HTMLInputElement>("source"),
   notice = get("notice"),
   selector = get<HTMLSelectElement>("message-select");
 let current: Input | undefined;
+let currentOrigin: ObservationOrigin = "imported-unverified";
 let file: Casefile | undefined;
 function element(tag: string, text = "", cls = "") {
   const e = document.createElement(tag);
@@ -20,14 +24,18 @@ function element(tag: string, text = "", cls = "") {
   e.className = cls;
   return e;
 }
-function consume(input: Input) {
-  current = input;
-  file = appendCasefile(
+function consume(input: Input, origin: ObservationOrigin) {
+  const next = appendCasefile(
     input,
     file?.sourceHash.toLowerCase() === input.sourceHash.toLowerCase()
       ? file
       : undefined,
+    undefined,
+    origin,
   );
+  file = next;
+  current = input;
+  currentOrigin = origin;
   render();
 }
 function render() {
@@ -36,9 +44,11 @@ function render() {
   if (!last) return;
   const analysis = last.analysis;
   notice.textContent =
-    last.input.mode === "fixture"
+    last.origin === "fixture-replay"
       ? `SYNTHETIC FIXTURE · ${analysis.summary}. This is an invented test case. No live transfer was verified.`
-      : `PUBLIC PROVIDER OBSERVATION · ${analysis.summary}. Collected ${last.recordedAt}.`;
+      : last.origin === "live-collected"
+        ? `PUBLIC PROVIDER OBSERVATION · ${analysis.summary}. Collected ${last.recordedAt}.`
+        : `IMPORTED UNVERIFIED · ${analysis.summary}. Imported data is untrusted; analysis was recomputed locally. Recorded ${last.recordedAt}.`;
   const evidence = get("evidence");
   evidence.replaceChildren();
   for (const [index, key, title] of [
@@ -92,7 +102,7 @@ function render() {
     history.append(
       element(
         "div",
-        `${i + 1}. ${o.recordedAt} · ${o.input.mode} · source log ${o.input.logIndex ?? o.analysis.source.logIndex ?? "unselected"} · ${o.analysis.destination.status}`,
+        `${i + 1}. ${o.recordedAt} · ${o.origin} · source log ${o.input.logIndex ?? o.analysis.source.logIndex ?? "unselected"} · ${o.analysis.destination.status}`,
         "history-row",
       ),
     );
@@ -111,7 +121,7 @@ get<HTMLFormElement>("case-form").addEventListener("submit", async (e) => {
       throw Error(
         `Local request failed (${r.status}). Start the loopback server for live collection.`,
       );
-    consume(await r.json());
+    consume(await r.json(), "live-collected");
   } catch (err) {
     notice.textContent = (err as Error).message;
   } finally {
@@ -127,7 +137,7 @@ get("replay").addEventListener("click", async () => {
     const input: Input = await r.json();
     source.value = input.sourceHash;
     destination.value = input.destinationHash ?? "";
-    consume(input);
+    consume(input, "fixture-replay");
   } catch (err) {
     notice.textContent = (err as Error).message;
   }
@@ -135,7 +145,7 @@ get("replay").addEventListener("click", async () => {
 selector.addEventListener("change", () => {
   try {
     if (current && selector.value !== "")
-      consume({ ...current, logIndex: Number(selector.value) });
+      consume({ ...current, logIndex: Number(selector.value) }, currentOrigin);
   } catch (err) {
     notice.textContent = (err as Error).message;
   }
@@ -152,7 +162,7 @@ get("json").addEventListener("click", () => {
   if (file)
     download(
       "arc-cctp-casefile.json",
-      JSON.stringify(file, null, 2),
+      serializeCasefile(file),
       "application/json",
     );
 });
@@ -163,8 +173,9 @@ get<HTMLInputElement>("import").addEventListener("change", async (e) => {
   try {
     const f = (e.target as HTMLInputElement).files?.[0];
     if (!f) return;
-    if (f.size > 2_000_000) throw Error("Import exceeds 2 MB");
-    const parsed: Casefile = normalizeCasefile(JSON.parse(await f.text()));
+    if (f.size > MAX_CASEFILE_BYTES)
+      throw Error("Import exceeds casefile byte budget (2 MB)");
+    const parsed: Casefile = importCasefile(await f.text());
     if (
       parsed.schemaVersion !== 1 ||
       parsed.route !== "base-arc-mainnet" ||
@@ -180,12 +191,11 @@ get<HTMLInputElement>("import").addEventListener("change", async (e) => {
     }
     file = parsed;
     current = file.observations.at(-1)?.input;
+    currentOrigin = "imported-unverified";
     if (!current) throw Error("Empty history");
     source.value = file.sourceHash;
     destination.value = current.destinationHash ?? "";
     render();
-    notice.textContent +=
-      " Imported data is untrusted; analysis was recomputed locally.";
   } catch (err) {
     notice.textContent = `Import rejected: ${(err as Error).message}`;
   }

@@ -2,7 +2,7 @@
 
 Это локальный инструмент для разработчика или поддержки: собрать доказательства по **уже существующему** переводу USDC из Base mainnet в Arc mainnet. Отчёт отделяет исходное сжигание, ответ Circle и наблюдаемое исполнение на Arc. Он помогает объяснить, какие данные действительно есть и какого подтверждения не хватает.
 
-Сейчас демонстрация основана на синтетических fixtures. Реальный завершённый перевод Base → Arc независимо не подтверждён; live integration smoke остаётся pending. Программа умеет ограниченно читать mainnet, но это не основание выдавать тестовые данные за mainnet-результат. Нового перевода для проверки никто не делал.
+Проверены синтетические fixtures и один ранее существовавший публичный перевод Base → Arc. 8 октября 2026 в 21:46:23 UTC выполнено шесть ограниченных reads: source burn связан с Iris message и canonical destination execution. [JSON](examples/live-2026-10-08.casefile.json) и [Markdown](examples/live-2026-10-08.casefile.md) содержат timestamps и источники. Это наблюдение провайдеров в пределах одного receipt, без локальной проверки consensus/подписи. Нового перевода для проверки никто не делал. Публичного deployment нет.
 
 ## Что нужно
 
@@ -47,7 +47,9 @@ Linux/macOS: те же команды с `npm` вместо `npm.cmd`. Сбор�
 
 До закрытия скачайте casefile. После импорта повторное чтение того же source добавит новое наблюдение. При смене source создаётся другой casefile. Данные хранятся в памяти страницы; сервер не хранит историю, кошельки и hashes.
 
-Лимит — 100 наблюдений на файл. Следующее добавление отклоняется, старый файл сохраняется. Скачайте его и откройте новую страницу для следующего файла; программа не обрезает старую историю автоматически.
+Лимиты — 100 наблюдений и 2 000 000 UTF-8 bytes на весь casefile, включая формат JSON и маркеры импорта. Append, export и import используют один byte budget. Несколько крупных receipts могут исчерпать его задолго до 100 snapshots. Добавление сверх лимита отклоняется атомарно: прежние timestamps и raw data сохраняются. Скачайте файл и откройте новую страницу для следующего; история автоматически не обрезается.
+
+У каждого snapshot есть local origin: `fixture-replay`, `live-collected` или `imported-unverified`. Любой импорт получает `imported-unverified`, даже если файл утверждает `mode=live` или `origin=live-collected`; выбор logIndex сохраняет этот маркер в UI, JSON и Markdown. Только фактически выполненное локальное чтение получает `live-collected`. Старый raw input и provider provenance остаются, но импортированный JSON не считается аутентифицированным доказательством.
 
 ## CLI: воспроизводимые команды
 
@@ -90,7 +92,7 @@ npm.cmd run cli -- --source "PUBLIC_BASE_SOURCE_HASH" --destination "PUBLIC_ARC_
 
 Фиксированные бесплатные upstreams, 8 секунд на запрос, 40 секунд на кейс, 1 MiB на ответ, без retries и broad scanning. При сбое сохраните отчёт и повторите позже вручную. Arbitrary URLs и приватные upstream endpoints не принимаются. Сервер слушает только loopback, проверяет Host/Origin; публично его не выставляйте. Экспорт может раскрывать публичный recipient и вашу активность, поэтому решайте сами, кому передать файл.
 
-## Проверки и pending live case
+## Проверки и сохранённый live case
 
 ```powershell
 npm.cmd test
@@ -101,4 +103,12 @@ npx.cmd playwright install chromium
 npm.cmd run smoke
 ```
 
-Точное delivery evidence: [docs/VERIFICATION.md](docs/VERIFICATION.md). Для live smoke нужен независимо документированный **ранее завершённый** Base → Arc кейс с source/destination hashes. Затем ограниченное чтение и проверка matching messages, chain IDs, logs, net/fee и timestamps. До этого допустим только честный fixture-only demo. Не создавайте собственный перевод за деньги ради smoke.
+Точное delivery evidence: [docs/VERIFICATION.md](docs/VERIFICATION.md). Проверенный source: [Base transaction](https://basescan.org/tx/0x768ee6d00bf6f8c34d1821c87d2126a3e52d880143a5e794c1d80738328b322d), destination: [Arc transaction](https://explorer.arc.io/tx/0xa60955159012accea53ef444c6edf5622acc7c3e61fb6a25c3434ab124c3ef96). Source logs 315/316, destination logs 8/9; gross 10.998900, net 10.998543, fee 0.000357 USDC. Iris assigned nonce и все immutable поля связаны с исходным сообщением; совпадение только recipient/amount не использовалось как доказательство.
+
+Сохранённый JSON можно импортировать без сети; UI честно покажет `imported-unverified`. Для нового timestamped read этого уже существующего кейса:
+
+```powershell
+npm.cmd run cli -- --source 0x768ee6d00bf6f8c34d1821c87d2126a3e52d880143a5e794c1d80738328b322d --destination 0xa60955159012accea53ef444c6edf5622acc7c3e61fb6a25c3434ab124c3ef96 --logIndex 315 --out local-casefiles/live.json
+```
+
+Будущий outage, changed head или недоступный receipt должны сохраняться как новое наблюдение, не заменять записанное ранее. Не создавайте собственный перевод за деньги ради smoke.

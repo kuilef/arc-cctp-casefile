@@ -2,7 +2,7 @@
 
 A local, read-only evidence report for an **existing Base mainnet → Arc mainnet USDC transfer**. Give it a source transaction hash and, optionally, a known destination transaction hash. Export a support case with raw public observations, timestamps, provider origins and explicit evidence limits.
 
-**Current validation: synthetic fixture replay. No independently confirmed live completed Base → Arc transfer is bundled.** Live collection is implemented; its completed-transfer integration smoke remains pending. No deployment was made.
+**Current validation: offline replay plus one existing public Base → Arc completed-transfer smoke**, collected on 2026-10-08 at 21:46:23 UTC using six bounded reads. Source, Iris and destination event evidence were bound; [recorded JSON](examples/live-2026-10-08.casefile.json) and [Markdown](examples/live-2026-10-08.casefile.md) preserve the observations. This is provider-observed execution within one supplied receipt, with the limitations below. No deployment was made.
 
 ## Run
 
@@ -34,6 +34,8 @@ Several source messages require an explicit `logIndex`; no first-message default
 
 Coverage is **one user-provided destination receipt**, with zero scanned blocks. No destination hash means `unobserved`, never `unminted`. Nonce usage alone is insufficient and is not queried. Destination matching uses event order within a single receive segment; unusual/batched/indistinguishable mint segments fail closed. Provider errors, missing receipts and ambiguity remain visible in JSON. Every recheck appends a snapshot; download it before closing, then import it to continue.
 
+Each snapshot records a local origin: `fixture-replay`, `live-collected`, or `imported-unverified`. Import always forces the last marker, including subsequent message selection; an input file's `mode` cannot claim local collection. JSON exports are unsigned observations. A shared **2,000,000 UTF-8 byte / 100 observation** limit applies to append, export and import. Exceeding either limit rejects the new snapshot and preserves earlier data; export the history and start a new casefile. Large receipts can reach the byte limit well before 100 snapshots.
+
 ## CLI
 
 ```sh
@@ -55,7 +57,7 @@ npx playwright install chromium
 npm run smoke
 ```
 
-CI runs checks on Ubuntu and Windows / Node 22; Chromium UI smoke runs on Ubuntu. All tests replay synthetic evidence and make no upstream RPC/Iris calls. See [docs/VERIFICATION.md](docs/VERIFICATION.md) for the delivery evidence and pending live case.
+CI runs checks on Ubuntu and Windows / Node 22; Chromium UI smoke runs on Ubuntu. Tests replay synthetic vectors and the recorded public snapshot; they make no upstream RPC/Iris calls. See [docs/VERIFICATION.md](docs/VERIFICATION.md) for verification details and live-case scope.
 
 ## Network and privacy
 

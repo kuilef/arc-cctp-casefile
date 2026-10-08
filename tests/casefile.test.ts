@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { readFile } from "node:fs/promises";
 import { evaluate } from "../src/casefile";
 import {
   fixture,
@@ -12,6 +13,22 @@ import {
   zero,
 } from "./helpers";
 import { BASE, ARC, TM } from "../src/profiles";
+test("recorded public Base-to-Arc evidence replays offline with exact net and fee", async () => {
+  const file = JSON.parse(
+    await readFile("examples/live-2026-10-08.casefile.json", "utf8"),
+  );
+  const observed = file.observations[0];
+  const analysis = evaluate(observed.input);
+  assert.equal(observed.origin, "live-collected");
+  assert.equal(analysis.summary, "destination_execution_observed");
+  assert.equal(analysis.source.logIndex, 315);
+  assert.equal(analysis.source.burnLogIndex, 316);
+  assert.equal(analysis.destination.mintLogIndex, 8);
+  assert.equal(analysis.destination.receiveLogIndex, 9);
+  assert.equal(analysis.destination.gross, "10998900");
+  assert.equal(analysis.destination.net, "10998543");
+  assert.equal(analysis.destination.fee, "357");
+});
 test("canonical source burn, bound attestation and destination net/fee evidence", () => {
   const r = evaluate(fixture());
   assert.equal(r.source.status, "proven");
@@ -134,6 +151,29 @@ test("failed destination receipt is retained", () => {
   f.destination.value.status = "0x0";
   assert.equal(evaluate(f).destination.status, "failed_receipt");
 });
+
+for (const which of ["source", "destination"] as const) {
+  for (const [label, value] of [
+    ["foreign failed receipt", { status: "0x0", transactionHash: hash("f") }],
+    ["unidentified failed receipt", { status: "0x0" }],
+    ["non-object receipt", false],
+    ["array receipt", []],
+    ["malformed status", { status: 0 }],
+  ] as const) {
+    test(`${which} ${label} is unknown, never a proven failure`, () => {
+      const f = fixture();
+      f[which].value = value;
+      assert.equal(evaluate(f)[which].status, "unknown");
+    });
+  }
+  test(`${which} failure requires a canonical hash even when requested hash agrees`, () => {
+    const f = fixture();
+    f[which].value = { status: "0x0", transactionHash: "invalid" };
+    if (which === "source") f.sourceHash = "invalid" as any;
+    else f.destinationHash = "invalid" as any;
+    assert.equal(evaluate(f)[which].status, "unknown");
+  });
+}
 test("wrong network stops every evidence claim", () => {
   const f = fixture();
   f.destinationChain = obs("0x4cef52");

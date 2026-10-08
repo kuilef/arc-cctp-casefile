@@ -82,12 +82,35 @@ export function createTransport(
           return observation("invalid_json", url);
         }
         if (body) {
-          if (parsed.error)
+          if (
+            parsed === null ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed) ||
+            parsed.jsonrpc !== "2.0" ||
+            !Number.isSafeInteger(parsed.id) ||
+            parsed.id !== body.id ||
+            Object.hasOwn(parsed, "result") === Object.hasOwn(parsed, "error")
+          )
+            return observation("invalid_rpc_response", url, parsed);
+          if (Object.hasOwn(parsed, "error")) {
+            if (
+              parsed.error === null ||
+              typeof parsed.error !== "object" ||
+              Array.isArray(parsed.error) ||
+              !Number.isSafeInteger(parsed.error.code) ||
+              typeof parsed.error.message !== "string"
+            )
+              return observation("invalid_rpc_response", url, parsed);
             return observation("rpc_error", url, null, {
               error: JSON.stringify(parsed.error),
             });
-          if (!Object.hasOwn(parsed, "result"))
-            return observation("invalid_rpc_response", url);
+          }
+          if (
+            ["eth_chainId", "eth_blockNumber"].includes(body.method) &&
+            (typeof parsed.result !== "string" ||
+              !/^0x(?:0|[1-9a-f][\da-f]*)$/i.test(parsed.result))
+          )
+            return observation("invalid_rpc_response", url, parsed);
           return observation(
             parsed.result === null &&
               body.method === "eth_getTransactionReceipt"
