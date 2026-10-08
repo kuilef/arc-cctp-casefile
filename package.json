@@ -1,0 +1,32 @@
+{
+  "name": "arc-cctp-casefile",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "cli": "tsx src/cli.ts",
+    "test": "node --import tsx --test tests/casefile.test.ts tests/transport.test.ts tests/history.test.ts tests/server.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome lint --error-on-warnings src tests",
+    "format": "biome format --write src tests",
+    "build": "vite build",
+    "smoke": "playwright test",
+    "fixtures": "tsx tests/write-fixtures.ts"
+  },
+  "dependencies": {
+    "viem": "2.57.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@playwright/test": "1.64.0",
+    "@types/node": "22.12.0",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vite": "7.3.7"
+  }
+}

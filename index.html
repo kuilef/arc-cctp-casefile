@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="description" content="Read-only evidence casefiles for existing Base to Arc USDC transfers."><title>Arc CCTP Casefile</title></head>
+<body><div class="shell">
+<header><div class="mark">CF</div><div><p class="eyebrow">BASE → ARC · MAINNET</p><h1>Arc CCTP Casefile</h1></div><span class="readonly">READ ONLY</span></header>
+<section class="intro"><h2>A transfer, with its evidence attached.</h2><p>Separate the source burn, Circle’s attestation and an observed destination execution. Keep uncertainty visible and export a case your support team can inspect.</p></section>
+<div class="layout"><aside>
+<form id="case-form" class="panel"><p class="eyebrow">01 / COLLECT</p><h3>Existing transfer</h3><label for="source">Source transaction · Base</label><input id="source" placeholder="0x… (64 hex characters)" required pattern="0x[a-fA-F0-9]{64}" autocomplete="off" spellcheck="false">
+<label for="destination">Destination transaction · Arc <span>optional</span></label><input id="destination" placeholder="Known execution hash" pattern="0x[a-fA-F0-9]{64}" autocomplete="off" spellcheck="false">
+<p class="hint">Coverage is one supplied destination receipt. With no hash, receipt execution remains unobserved. No chain scan runs.</p>
+<button id="collect" type="submit">Read public evidence <span>↗</span></button>
+<p class="hint">Up to 6 anonymous reads · 40-second budget. No wallet, signing, recovery or re-attestation.</p></form>
+<section class="panel"><p class="eyebrow">02 / REPLAY OFFLINE</p><h3>Explore sample evidence</h3><label for="sample">Synthetic scenario</label><select id="sample"><option value="completed">Matched execution + fee</option><option value="unobserved">Attestation available, receipt unobserved</option><option value="unavailable">Circle rate limit</option><option value="multi">Multiple source messages</option></select><button id="replay" class="secondary" type="button">Replay fixture</button><p class="hint">Invented test vectors, never a real transfer. Replay makes zero upstream requests.</p></section>
+<section class="panel"><label for="import">Continue a saved casefile</label><input id="import" type="file" accept=".json,application/json"><p class="hint">Import locally, then recheck the same source. Earlier observations and timestamps are preserved. Keep exports private if they reveal your activity.</p></section>
+</aside><main>
+<div id="notice" role="status" aria-live="polite">Ready. Enter an existing source hash or replay a fixture.</div>
+<section id="selection-panel" class="panel" hidden><label for="message-select">Select a source MessageSent log</label><select id="message-select"><option value="">Choose explicitly…</option></select><p class="hint">Several messages exist in this source transaction. No message is chosen automatically.</p></section>
+<div id="evidence" class="timeline"><section class="empty panel"><div class="document-icon">≡</div><h3>Your evidence timeline will appear here.</h3><p>Source proof → Circle observation → destination receipt.<br>Each claim includes its boundaries.</p></section></div>
+<section id="exports" class="panel" hidden><div class="export-head"><div><p class="eyebrow">03 / CASEFILE</p><h3>Take the evidence with you</h3></div><div class="downloads"><button id="json" class="secondary">JSON</button><button id="markdown" class="secondary">Markdown</button></div></div><p class="hint">JSON contains exact raw observations, timestamps and provider origins. Download before closing: nothing is stored on the server.</p><div id="history"></div></section>
+<footer>Attestation complete ≠ received. Source burn ≠ delivery.<br>Provider observations are not a promise of recovery or a current balance.</footer>
+</main></div></div><script type="module" src="/src/ui.ts"></script></body></html>
