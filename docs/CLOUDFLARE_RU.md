@@ -8,29 +8,42 @@ message selection, история и exports остаются в браузер�
 ## Текущее состояние публикации: 2026-10-09
 
 Адрес: [arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/).
-Deployment v2 `a2c335a3-f2bd-4249-8b67-3cd9aeae5539`, `LIVE_ENABLED=true`,
-`RATE_GATE` настроен. Исправление `redirect: "manual"` работает: hosted export
-в **10:23:58 UTC** содержит правильный Arc chain ID `0x13b2`. Base RPC вернул
-`http_429`; source/Iris/destination/head остались `not_requested`.
-Это проверка настоящего Worker, но ещё не успешный live case.
+Hosted live заблокирован provider access. V3 deployment
+`88494ab0-50cd-443d-9edb-49e4a5ab1c7d` имел `BASE_RPC_PROVIDER=publicnode`,
+`LIVE_ENABLED=true` и прежний `RATE_GATE`. Cloud Chrome начал единственный case
+в **10:54:56.669 UTC**, JSON export записан **10:54:57.230 UTC**:
+Base `0x2105` и Arc `0x13b2` прочитаны успешно; PublicNode вернул HTTP403 на
+`eth_getTransactionReceipt` источника. Всего три upstream reads;
+Iris/destination/head остались `not_requested`. Причина отказа неизвестна.
+После HTTP403 не было retries, смены endpoints, routes/headers или credentials workaround.
 
-[Base снизил лимиты публичных read requests 8 октября](https://status.base.org/incidents/jrs0dpj60tqz).
-Для v3 добавлена deployment-only variable **BASE_RPC_PROVIDER**:
-- отсутствует или `base-public`: прежний `https://mainnet.base.org`;
-- `publicnode`: только `https://base-rpc.publicnode.com`;
+Соответствующий Cloudflare event: **10:54:56.778 UTC**, CPU **7 ms**, wall **413 ms**,
+outcome `ok`, exceptions `[]`, logs `[]`, truncated `false`. Это только частичный
+case до HTTP403, не CPU полного case или near-limit payload. **Рабочий hosted live case
+не подтверждён.** Live отключён и подтверждён: production deployment
+`5c70999a-62cf-406f-b679-22a58f1dae6a` использует тот же v3 ZIP,
+`LIVE_ENABLED=false`, `BASE_RPC_PROVIDER=publicnode`, прежний `RATE_GATE`.
+Offline fixture работает; контрольный collection request получил503, сохранив
+предыдущие observations. Offline replay/import/export остаются доступны.
+
+Ранее v2 исправил manual redirect mode, но официальный Base RPC вернул 429.
+[Base снизил read limits 8 октября](https://status.base.org/incidents/jrs0dpj60tqz).
+Deployment-only variable **BASE_RPC_PROVIDER** принимает:
+- отсутствует или `base-public`: `https://mainnet.base.org`;
+- `publicnode`: `https://base-rpc.publicnode.com`;
 - другое значение: fail-closed 503 до upstream reads.
 
-Для этого демо задайте **BASE_RPC_PROVIDER=publicnode** и redeploy v3.
-[PublicNode публикует этот бесплатный RPC](https://base.publicnode.com/), ключ и
-регистрация не нужны; [условия сервиса](https://www.publicnode.com/terms) не дают
-гарантий доступности. Переключение выполняет только оператор через deployment,
-не посетитель и не transport после ошибки. Один case использует один Base
-endpoint; нет rotation, retry или попыток обойти блокировки. Фактический endpoint
-сохраняется в provenance. CLI/local defaults не изменены.
+[PublicNode публикует бесплатный endpoint](https://base.publicnode.com/),
+но [условия](https://www.publicnode.com/terms) не гарантируют доступность, а
+наблюдавшийся receipt request получил HTTP403. Один case использует один Base endpoint;
+нет automatic rotation/fallback/retry. Provenance сохраняет реальный endpoint.
+CLI/local defaults не изменены. Не продолжайте probes после access denial.
 
-**Успешный hosted live smoke на v3 и actual Cloudflare CPU пока ожидаются.**
-Синтетические workerd tests не измеряют CPU, production KV или provider egress.
-Максимальный payload 128 KiB также остаётся runtime-непроверенным.
+Для восстановления нужен разрешённый RPC service access, совместимый с Cloudflare,
+настройка/одобрение пользователя для нового аккаунта или credentials, если нужны,
+и повторная ограниченная live/CPU проверка. До этого держите LIVE_ENABLED=false.
+Синтетические workerd tests не измеряют production CPU/egress. Максимальный
+payload 128 KiB остаётся runtime-непроверенным; fixture не заменяет live evidence.
 
 ## Сборка и тесты
 

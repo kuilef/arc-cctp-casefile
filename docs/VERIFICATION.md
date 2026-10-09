@@ -148,6 +148,45 @@ against v2; the spacing regression reproduced HTTP503 before the fix.
 
 Two additional browser regressions verify the actual Retry-After wait and
 operator-review message while preserving history. Local Playwright cannot run in
-this cloud workspace, so these are pending the GitHub Linux Chromium CI run;
-no local browser pass is claimed. UI wording now says fixed allowlisted RPCs,
+this cloud workspace, so no local browser pass is claimed. Both subsequently passed in GitHub Linux
+Chromium: the complete suite passed 7/7. Push run 37919165762 and PR run 37919170930
+completed successfully for commit 84cd00859cde1183a119c60d81faaa5db8c65e60. UI wording now says fixed allowlisted RPCs,
 not that every provider is official. Hosted v3 and full-case CPU remain pending.
+
+
+## Hosted v3 access denial: 2026-10-09
+
+Production deployment `88494ab0-50cd-443d-9edb-49e4a5ab1c7d` used the tested CI
+artifact from commit `84cd00859cde1183a119c60d81faaa5db8c65e60`,
+`BASE_RPC_PROVIDER=publicnode` and the existing RATE_GATE binding. Direct GitHub
+artifact download, browser file selection and Pages upload completed with all
+10 files, without asking the user to download another ZIP.
+
+One coordinated cloud-browser collection began at **10:54:56.669 UTC**, without
+simultaneous collectors. The actual JSON export recorded **10:54:57.230 UTC**:
+- Base chain ID: `ok`, `0x2105`, PublicNode, **10:54:57.085 UTC**;
+- Arc chain ID: `ok`, `0x13b2`, official Arc RPC, **10:54:57.145 UTC**;
+- Base source receipt: `http_403`, null value, PublicNode, **10:54:57.199 UTC**;
+- Iris, destination receipt and head: `not_requested`.
+
+The matching Cloudflare event timestamp was **10:54:56.778 UTC**, CPU **7 ms**,
+wall **413 ms**, outcome `ok`, exceptions `[]`, logs `[]`, truncated `false`.
+This is a partial three-read case stopped at provider denial, not full-case or
+maximum-payload CPU proof. Both correct chain IDs and the actual provenance prove
+that v3 and its configured provider reached the Worker; they do not establish
+successful CCTP evidence. Failed response bodies are intentionally not collected,
+so the precise provider denial reason is unknown.
+
+No retry, endpoint rotation, route/header change or credential workaround followed
+HTTP403. Live was disabled and verified in production deployment
+`5c70999a-62cf-406f-b679-22a58f1dae6a`, using the exact same v3 ZIP.
+`LIVE_ENABLED=false`, `BASE_RPC_PROVIDER=publicnode` and RATE_GATE were verified
+in the dashboard. Offline fixture replay worked; a control collection attempt
+returned503 and preserved previous observations. Offline replay/import/export
+remains available. Restoring live requires authorized RPC access compatible with
+Cloudflare, user setup/approval for any needed account or credentials, then a
+new bounded real-case and CPU validation.
+
+A later test-only hardening makes both new browser regressions wait for fixture
+history before submitting, removing an avoidable fixture-load race. It changes
+no production code or deployed artifact bytes.

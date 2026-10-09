@@ -173,6 +173,7 @@ test("collection labels fixed providers honestly and displays server Retry-After
   });
   await page.goto(url);
   await page.getByRole("button", { name: "Replay fixture" }).click();
+  await expect(page.locator(".history-row")).toHaveCount(1);
   await page.locator("#collect").click();
   await expect(page.locator("#notice")).toHaveText("Reading fixed allowlisted RPCs and Circle Iris…");
   release?.();
@@ -189,6 +190,7 @@ test("persistent upstream cooldown explains operator review without inventing a 
   });
   await page.goto(url);
   await page.getByRole("button", { name: "Replay fixture" }).click();
+  await expect(page.locator(".history-row")).toHaveCount(1);
   await page.locator("#collect").click();
   await expect(page.locator("#notice")).toContainText("Provider backoff requires operator review");
   await expect(page.locator("#notice")).not.toContainText("90 seconds");
