@@ -9,8 +9,57 @@ function equal(actual, expected) {
       `expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`,
     );
 }
+const calls = [];
+let guidanceDate;
+function makeRequest() {
+  return new Request(`https://casefile.example/api/case?source=${source}&destination=${destination}`, {
+    headers: { "Sec-Fetch-Site": "same-origin", "CF-Connecting-IP": "192.0.2.1" },
+  });
+}
 export default {
   async test(_ctrl, env) {
+    guidanceDate = new Date(Date.now() + 300_000).toUTCString();
+    if (!["success", "redirect"].includes(env.MODE)) {
+      let marker = null, lastWrite = 0;
+      const writes = [];
+      const configured = {
+        LIVE_ENABLED: "true",
+        BASE_RPC_PROVIDER: env.MODE === "unknown-provider" ? "https://evil.example" : "publicnode",
+        RATE_GATE: { get: async () => marker, put: async (_key, value, options) => {
+          if (lastWrite && Date.now() - lastWrite < 1000) throw Error("KV same-key write rate limit");
+          marker = value; writes.push(options); lastWrite = Date.now();
+        } },
+        ASSETS: { fetch: async () => new Response("static") },
+      };
+      const response = await worker.fetch(makeRequest(), configured);
+      if (env.MODE === "unknown-provider") {
+        equal(response.status, 503);
+        equal((await response.json()).error, "invalid_base_rpc_provider");
+        equal(calls.length, 0); equal(writes.length, 0);
+        return;
+      }
+      equal(response.status, 200);
+      const input = await response.json();
+      equal(input.sourceChain.provenance, "https://base-rpc.publicnode.com");
+      if (env.MODE === "publicnode") {
+        equal(input.sourceChain.status, "ok"); equal(input.source.status, "ok");
+        equal(input.source.provenance, "https://base-rpc.publicnode.com");
+        equal(input.destination.status, "ok"); equal(calls.length, 6);
+      } else {
+        const date = env.MODE === "retry-503-date";
+        const invalid = env.MODE === "retry-invalid";
+        equal(input.sourceChain.status, date ? "http_503" : "http_429");
+        equal(input.sourceChain.retryAfter, invalid ? "invalid" : date ? guidanceDate : "180");
+        equal(input.source.status, "not_requested"); equal(calls.length, 2);
+        equal(writes.length, 2);
+        const denied = await worker.fetch(makeRequest(), configured);
+        equal(denied.status, invalid ? 503 : 429);
+        if (invalid) equal(writes[1]?.expirationTtl, undefined);
+        else if (!(Number(denied.headers.get("Retry-After")) >= 179)) throw Error("upstream cooldown was shortened");
+        equal(calls.length, 2);
+      }
+      return;
+    }
     const response = await worker.fetch(
       new Request(
         `https://casefile.example/api/case?source=${source}&destination=${destination}`,
@@ -52,9 +101,10 @@ export default {
 export const upstream = {
   async fetch(request, env) {
     const url = new URL(request.url);
+    calls.push(request.url);
     if (
       ![
-        "https://mainnet.base.org",
+        ["success", "redirect"].includes(env.MODE) ? "https://mainnet.base.org" : "https://base-rpc.publicnode.com",
         "https://rpc.mainnet.arc.io",
         "https://iris-api.circle.com",
       ].includes(url.origin)
@@ -62,6 +112,11 @@ export const upstream = {
       throw Error("redirect target or unexpected upstream requested");
     if (request.headers.has("Cookie") || request.headers.has("Authorization"))
       throw Error("unexpected credentials");
+    if (env.MODE.startsWith("retry-") && url.origin === "https://base-rpc.publicnode.com")
+      return new Response(null, {
+        status: env.MODE === "retry-503-date" ? 503 : 429,
+        headers: { "Retry-After": env.MODE === "retry-invalid" ? "invalid" : env.MODE === "retry-503-date" ? guidanceDate : "180" },
+      });
     if (env.MODE === "redirect")
       return new Response(null, {
         status: 302,
@@ -83,7 +138,7 @@ export const upstream = {
       throw Error("unexpected RPC method");
     const result =
       payload.method === "eth_chainId"
-        ? url.origin === "https://mainnet.base.org"
+        ? ["https://mainnet.base.org", "https://base-rpc.publicnode.com"].includes(url.origin)
           ? "0x2105"
           : "0x13b2"
         : payload.method === "eth_blockNumber"

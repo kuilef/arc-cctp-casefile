@@ -15,6 +15,7 @@ export type Observation = {
   provenance: string;
   value: any;
   httpStatus?: number;
+  retryAfter?: string;
   error?: string;
 };
 export type Input = {
@@ -648,6 +649,7 @@ export function markdown(file: Casefile) {
                   observedAt: x.observedAt,
                   provenance: x.provenance,
                   httpStatus: x.httpStatus,
+                  retryAfter: x.retryAfter,
                   error: x.error,
                 },
               ];

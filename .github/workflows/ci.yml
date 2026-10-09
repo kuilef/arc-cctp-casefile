@@ -30,3 +30,14 @@ jobs:
         run: npx playwright install --with-deps chromium
       - if: runner.os == 'Linux'
         run: npm run smoke
+      - name: Record tested Pages file checksums
+        if: runner.os == 'Linux'
+        run: find dist -type f -print0 | sort -z | xargs -0 sha256sum
+      - name: Upload tested Cloudflare Pages directory
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-cctp-casefile-pages-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7

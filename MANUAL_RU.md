@@ -115,6 +115,8 @@ npm.cmd run cli -- --source 0x768ee6d00bf6f8c34d1821c87d2126a3e52d880143a5e794c1
 
 ## Публичное демо Cloudflare
 
-Опубликованный адрес: [arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/). На 2026-10-09 10:06:23 UTC live проверка обнаружила несовместимый `redirect: "error"`: chain reads вернули `network_error`. Исправление на manual mode с отказом для всех 3xx проверено локально и в workerd; его публикация, успешный hosted live smoke и Cloudflare CPU ещё не подтверждены.
+Адрес: [arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/). Выберите Synthetic scenario и нажмите Replay fixture для офлайн-примера. Для live используйте уже существующую пару hashes выше, нажмите Read public evidence один раз, выберите log 315 при необходимости и проверьте/export JSON. Не создавайте перевод ради проверки.
 
-Отдельный Worker, настройки и границы проверки: [docs/CLOUDFLARE_RU.md](docs/CLOUDFLARE_RU.md).
+На 2026-10-09 10:23:58 UTC deployment v2 исправил несовместимый redirect mode: Arc chain ID успешно прочитан, но официальный Base RPC вернул HTTP429. Дальнейший сбор корректно остановился. В v3 предусмотрен фиксированный бесплатный PublicNode RPC через deployment variable BASE_RPC_PROVIDER=publicnode; автоматического переключения или повторов нет. Пока его hosted live smoke и Cloudflare CPU не подтверждены. При cooldown дождитесь разрешённого срока; не повторяйте запросы часто. Точные provider observations остаются в JSON.
+
+Настройки, Retry-After и границы проверки: [docs/CLOUDFLARE_RU.md](docs/CLOUDFLARE_RU.md).

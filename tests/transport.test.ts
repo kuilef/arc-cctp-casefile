@@ -178,3 +178,52 @@ for (const kind of ["rpc", "iris"] as const) {
     }
   });
 }
+
+for (const [provider, endpoint] of [
+  [undefined, "https://mainnet.base.org"],
+  ["base-public", "https://mainnet.base.org"],
+  ["publicnode", "https://base-rpc.publicnode.com"],
+] as const) {
+  test(`Base provider ${provider ?? "default"} uses one fixed origin for every read`, async () => {
+    const urls: string[] = [];
+    const t = createTransport(async (url, init) => {
+      urls.push(String(url));
+      assert.equal(init?.redirect, "manual");
+      assert.equal(init?.credentials, "omit");
+      const method = JSON.parse(String(init?.body)).method;
+      return Response.json({ jsonrpc: "2.0", id: 1, result: method === "eth_chainId" ? "0x2105" : null });
+    }, { baseRpcProvider: provider });
+    assert.equal((await t.rpc("base", "eth_chainId", [])).provenance, endpoint);
+    assert.equal((await t.rpc("base", "eth_getTransactionReceipt", [hash("1")])).provenance, endpoint);
+    assert.deepEqual(urls, [endpoint, endpoint]);
+  });
+}
+test("Base provider enum rejects arbitrary URLs, credentials and unknown values without reads", () => {
+  let calls = 0;
+  for (const provider of ["", "PUBLICNODE", "publicnode ", "__proto__", "constructor", "https://mainnet.base.org", "https://user:secret@base-rpc.publicnode.com"]) {
+    assert.throws(() => createTransport(async () => { calls++; return new Response(); }, { baseRpcProvider: provider }), /invalid_base_rpc_provider/);
+  }
+  assert.equal(calls, 0);
+});
+for (const status of [429, 503]) {
+  for (const guidance of ["120", "Fri, 09 Oct 2026 12:30:00 GMT", "invalid", "9999999999999999999999999999999", ""]) {
+    test(`HTTP ${status} retains exact Retry-After ${JSON.stringify(guidance)} without retry or fallback`, async () => {
+      const urls: string[] = [];
+      const t = createTransport(async url => {
+        urls.push(String(url));
+        return new Response(null, { status, headers: { "Retry-After": guidance } });
+      }, { baseRpcProvider: "publicnode" });
+      const observation = await t.rpc("base", "eth_chainId", []);
+      assert.equal(observation.status, `http_${status}`);
+      assert.equal(observation.httpStatus, status);
+      assert.equal(observation.retryAfter, guidance);
+      assert.equal(observation.value, null);
+      assert.deepEqual(urls, ["https://base-rpc.publicnode.com"]);
+      assert.equal(t.requestCount(), 1);
+    });
+  }
+}
+test("missing Retry-After remains absent rather than fabricated", async () => {
+  const t = createTransport(async () => new Response(null, { status: 429 }));
+  assert.equal(Object.hasOwn(await t.rpc("base", "eth_chainId", []), "retryAfter"), false);
+});

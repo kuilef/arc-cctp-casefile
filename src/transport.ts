@@ -8,6 +8,7 @@ export function createTransport(
     maxRequests?: number;
     maxBytes?: number;
     totalMs?: number;
+    baseRpcProvider?: string;
   } = {},
 ) {
   const {
@@ -15,7 +16,14 @@ export function createTransport(
     maxRequests = 6,
     maxBytes = 1_048_576,
     totalMs = 40_000,
+    baseRpcProvider = "base-public",
   } = options;
+  // Deployment configuration selects exactly one fixed Base provider per case.
+  // CLI callers omit the option and keep the original Base public endpoint.
+  if (baseRpcProvider !== "base-public" && baseRpcProvider !== "publicnode")
+    throw Error("invalid_base_rpc_provider");
+  const baseRpc = baseRpcProvider === "publicnode"
+    ? "https://base-rpc.publicnode.com" : BASE.rpc;
   let count = 0;
   const started = Date.now();
   const observation = (
@@ -55,10 +63,14 @@ export function createTransport(
             httpStatus: response.status,
             error: "redirect_refused",
           });
-        if (!response.ok)
+        if (!response.ok) {
+          const retryAfter = response.headers.get("Retry-After");
           return observation(`http_${response.status}`, url, null, {
             httpStatus: response.status,
+            ...((response.status === 429 || response.status === 503) && retryAfter !== null
+              ? { retryAfter } : {}),
           });
+        }
         if (Number(response.headers.get("content-length")) > maxBytes)
           return observation("response_too_large", url);
         const reader = response.body?.getReader();
@@ -167,7 +179,7 @@ export function createTransport(
         : params.length !== 0
     )
       throw Error("invalid_rpc_parameters");
-    return request(network === "base" ? BASE.rpc : ARC.rpc, {
+    return request(network === "base" ? baseRpc : ARC.rpc, {
       jsonrpc: "2.0",
       id: 1,
       method,

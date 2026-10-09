@@ -111,16 +111,23 @@ get<HTMLFormElement>("case-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const button = get<HTMLButtonElement>("collect");
   button.disabled = true;
-  notice.textContent = "Reading fixed official RPCs and Circle Iris…";
+  notice.textContent = "Reading fixed allowlisted RPCs and Circle Iris…";
   try {
     const params = new URLSearchParams({ source: source.value.trim() });
     if (destination.value.trim())
       params.set("destination", destination.value.trim());
     const r = await fetch(`/api/case?${params}`, { credentials: "omit" });
-    if (!r.ok)
-      throw Error(
-        `Collection unavailable (${r.status}). A 429 means the demo is busy; wait at least 90 seconds. Other failures leave earlier observations intact.`,
-      );
+    if (!r.ok) {
+      const error = await r.json().catch(() => null);
+      if (error?.error === "upstream_cooldown_requires_operator")
+        throw Error("Provider backoff requires operator review. Earlier observations are unchanged.");
+      const retryAfter = r.headers.get("Retry-After");
+      const seconds = retryAfter !== null && /^\d+$/.test(retryAfter)
+        ? Number(retryAfter) : undefined;
+      const wait = seconds !== undefined && Number.isSafeInteger(seconds) && seconds > 0
+        ? ` Please wait at least ${seconds} seconds before another manual collection.` : "";
+      throw Error(`Collection unavailable (${r.status}).${wait} Earlier observations are unchanged.`);
+    }
     consume(await r.json(), "live-collected");
   } catch (err) {
     notice.textContent = (err as Error).message;

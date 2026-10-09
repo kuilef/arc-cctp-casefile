@@ -40,7 +40,7 @@ One bounded, real read-only smoke was made through the compiled Worker in Node a
 At that preparation stage, deployment remained conditional on a verified free `RATE_GATE` KV binding, `LIVE_ENABLED` configuration, hosted browser checks and actual Cloudflare runtime/CPU validation. The CPU measurement plan and worst-case payload caveat are in [CLOUDFLARE_RU.md](CLOUDFLARE_RU.md). No new Cloudflare deployment, paid resource, credentials, billing change or GitHub push was performed by this validation step.
 
 
-## Hosted redirect incompatibility and pending fix: 2026-10-09
+## Hosted redirect incompatibility and v2 fix: 2026-10-09
 
 The published URL is [arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/).
 Deployment `c9038ac9-5aae-492c-aa2b-6c73cef28125` has `LIVE_ENABLED=true` and
@@ -72,10 +72,82 @@ using native workerd Request/fetch/Response APIs and synthetic in-process upstre
 services, without sockets or external networking. It checks six successful reads
 and redirect refusal. KV is a stub. **These tests do not prove hosted provider
 connectivity, production binding behavior, Cloudflare CPU usage or the worst-case
-runtime payload.** The fix has not yet been redeployed in this verification step;
-a new hosted live/browser check and actual CPU measurements are still pending.
+runtime payload.** That fix was subsequently redeployed as v2; the next section records its hosted result.
+Actual CPU measurements remain pending.
 Linux CI now installs that exact workerd version in a temporary prefix and runs
 the same compiled-artifact harness; project dependencies and lockfile are unchanged.
-The CI step has not yet run remotely for this change. See
+Both push and PR CI completed successfully for commit `48f36e305d582f99394cd3f540c572b22095b109`, including this workerd step, Windows/Linux checks and Chromium smoke: [PR run 37916394670](https://github.com/kuilef/arc-cctp-casefile/actions/runs/37916394670). See
 [CLOUDFLARE_RU.md](CLOUDFLARE_RU.md) for the repeatable command, bounded hosted
 smoke and fallback plan.
+
+
+## Hosted v2 upstream limit and v3 provider selection: 2026-10-09
+
+Production v2 deployment `a2c335a3-f2bd-4249-8b67-3cd9aeae5539` was independently
+checked from a cloud browser on the actual Pages origin, using only the same known
+public transaction pair. At **10:23:58.211 UTC**, Base chain ID observation was
+`http_429` / HTTP429 at `https://mainnet.base.org`. At **10:23:58.221 UTC**, Arc chain
+ID observation was `ok`, value `0x13b2`. All later observations were
+`not_requested`. The exported JSON proves the manual redirect fix reached the
+Worker and that the remaining failure was a provider rate limit; it does not
+establish successful CCTP evidence or CPU compliance. No simultaneous live probes,
+retries, broad scans or provider rotation were performed.
+
+[Base's October 8 change](https://status.base.org/incidents/jrs0dpj60tqz) reduced
+public read limits. The v3 Worker adds only a deployment-selected fixed alternative,
+[PublicNode's advertised free Base RPC](https://base.publicnode.com/), with
+`BASE_RPC_PROVIDER=publicnode`; default `base-public` preserves existing behavior.
+Unknown names fail closed. Actual provider provenance, chain-ID checks, six reads,
+8-second/read and 40-second total budgets, 128-KiB public response cap, read-only
+methods, no credentials and redirect refusal remain enforced. There is no automatic
+retry or fallback on failure. Hosted v3 validation and CPU metrics are still pending.
+
+CI also uploads the tested Pages directory after Linux checks for direct browser
+download, with seven-day retention. This upload does not deploy to Cloudflare.
+
+A dashboard runtime log matching the partial v2 case at **10:23:57 UTC** reported
+CPU **3 ms**, wall **298 ms**, outcome `ok`, exceptions `[]`. This is only the
+short-circuited two-chain-read invocation, not a full case or 128-KiB validation.
+An independent API guard request at **10:31:20 UTC** (CF-Ray
+`a47cb70f38cb69cc-DFW`) returned HTTP403 `same_origin_required`, with
+`Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: no-referrer` and CSP
+`default-src 'none'; frame-ancestors 'none'; base-uri 'none'`. This guard check
+made no upstream reads.
+
+V3 preserves received Retry-After strings on HTTP429/503, without retrying.
+Valid delta-seconds or strict IMF-fixdate guidance up to 24 hours extends the
+existing KV marker with a 90-second minimum. Missing guidance keeps 90 seconds;
+invalid or longer guidance writes a persistent fail-closed marker requiring
+operator review. Read-before-extension preserves any visible longer/blocked
+marker, but eventual consistency still permits races; this is not an atomic
+quota. KV failures/timeouts close the affected request with 503. If extension persistence
+fails, the previous 90-second marker can expire earlier than provider guidance;
+there is no durable-backoff guarantee under storage failure. Disable live and
+investigate rather than repeatedly retrying after such an error.
+
+V3 intentionally requires RATE_GATE for all live Worker requests, even when
+CASE_IP/CASE_LOCATION are configured. Those limiters supplement persistent
+upstream backoff; without KV the adapter returns503 before collection. The
+optional Workers sample needs an authorized KV binding before live can be enabled.
+
+Review caught the KV same-key limit of one write/second: a fast upstream429 could
+otherwise make the admission and backoff-extension writes conflict. V3 waits up
+to 1.1 seconds after admission put completion before rereading/extending that key.
+A faithful rate-limited KV stub covers this path. This bounded extra wait is not
+an upstream retry or an atomic cross-isolate write guarantee.
+
+
+V3 local regressions pass **170 source tests, 16 compiled Pages tests and 7 real
+workerd scenarios**, plus lint, typecheck and build. These cover both fixed Base
+providers, invalid provider names failing before collection, chain mismatch,
+128-KiB cap, raw Retry-After export/import preservation, seconds/date parsing,
+invalid/over-limit operator blocks, mandatory KV, storage errors, visible longer
+markers and same-key write spacing. New behavior was first observed failing
+against v2; the spacing regression reproduced HTTP503 before the fix.
+
+Two additional browser regressions verify the actual Retry-After wait and
+operator-review message while preserving history. Local Playwright cannot run in
+this cloud workspace, so these are pending the GitHub Linux Chromium CI run;
+no local browser pass is claimed. UI wording now says fixed allowlisted RPCs,
+not that every provider is official. Hosted v3 and full-case CPU remain pending.

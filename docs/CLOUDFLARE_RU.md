@@ -7,27 +7,30 @@ message selection, история и exports остаются в браузер�
 
 ## Текущее состояние публикации: 2026-10-09
 
-Адрес: [https://arc-cctp-casefile.pages.dev/](https://arc-cctp-casefile.pages.dev/).
-Deployment `c9038ac9-5aae-492c-aa2b-6c73cef28125`, `LIVE_ENABLED=true`,
-`RATE_GATE` настроен. Hosted проверка в **10:06:23 UTC** сохранила оба chain reads
-как `network_error`: workerd не принимает `redirect: "error"`. Поэтому этот
-deployment пока не является подтверждённым рабочим live demo.
+Адрес: [arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/).
+Deployment v2 `a2c335a3-f2bd-4249-8b67-3cd9aeae5539`, `LIVE_ENABLED=true`,
+`RATE_GATE` настроен. Исправление `redirect: "manual"` работает: hosted export
+в **10:23:58 UTC** содержит правильный Arc chain ID `0x13b2`. Base RPC вернул
+`http_429`; source/Iris/destination/head остались `not_requested`.
+Это проверка настоящего Worker, но ещё не успешный live case.
 
-В текущем source исправлен общий transport: `redirect: "manual"`, явный отказ
-для каждого 3xx до чтения body. Результат содержит `status: "http_<code>"`,
-`httpStatus`, `error: "redirect_refused"`, исходный provenance и timestamp;
-`value` остаётся null. Раньше Node обычно давал `network_error` при redirect.
-Ни Location, ни response body не читаются, повторов и переходов нет.
-Это сохраняет fixed-origin/read-only ограничения и прежние budgets.
-[Cloudflare Request manual mode](https://developers.cloudflare.com/workers/runtime-apis/request/#properties)
-и [workerd implementation](https://github.com/cloudflare/workerd/blob/main/src/workerd/api/http.c%2B%2B)
-подтверждают выбранное поведение.
+[Base снизил лимиты публичных read requests 8 октября](https://status.base.org/incidents/jrs0dpj60tqz).
+Для v3 добавлена deployment-only variable **BASE_RPC_PROVIDER**:
+- отсутствует или `base-public`: прежний `https://mainnet.base.org`;
+- `publicnode`: только `https://base-rpc.publicnode.com`;
+- другое значение: fail-closed 503 до upstream reads.
 
-Source/compiled regressions и два настоящих workerd smoke проходят локально.
-**Публикация исправления, успешный hosted live smoke и actual Cloudflare CPU
-ещё ожидаются.** Синтетический workerd smoke не измеряет Cloudflare CPU,
-production KV или реальный provider egress; максимум 128 KiB также остаётся
-runtime-непроверенным. План проверки и fail-closed fallback ниже остаются обязательными.
+Для этого демо задайте **BASE_RPC_PROVIDER=publicnode** и redeploy v3.
+[PublicNode публикует этот бесплатный RPC](https://base.publicnode.com/), ключ и
+регистрация не нужны; [условия сервиса](https://www.publicnode.com/terms) не дают
+гарантий доступности. Переключение выполняет только оператор через deployment,
+не посетитель и не transport после ошибки. Один case использует один Base
+endpoint; нет rotation, retry или попыток обойти блокировки. Фактический endpoint
+сохраняется в provenance. CLI/local defaults не изменены.
+
+**Успешный hosted live smoke на v3 и actual Cloudflare CPU пока ожидаются.**
+Синтетические workerd tests не измеряют CPU, production KV или provider egress.
+Максимальный payload 128 KiB также остаётся runtime-непроверенным.
 
 ## Сборка и тесты
 
@@ -46,6 +49,13 @@ npm run smoke
 Для smoke нужен Chromium: `npx --no-install playwright install chromium`.
 build:pages создаёт dist с assets, fixtures, _headers, _routes.json и
 **собранным _worker.js**. Dashboard не компилирует TypeScript или functions/.
+Linux CI после успешных tests/audit/browser smoke сохраняет `dist/` в artifact
+`arc-cctp-casefile-pages-<commit>` на 7 дней. В GitHub Actions откройте успешный
+run нужного commit и скачайте artifact в авторизованном браузере. ZIP содержит
+само содержимое dist, а не родительскую папку; его можно выбрать в Pages Direct
+Upload. Это сборка CI, а не автоматическая публикация Cloudflare. Ни token,
+ни новый OAuth grant для скачивания через уже открытый GitHub не нужны.
+
 _routes.json включает Worker только для /api/*; static replay остаётся
 статическим и не тратит invocation на Worker.
 
@@ -65,7 +75,7 @@ npm install --prefix /tmp/casefile-workerd --no-save --package-lock=false worker
 /tmp/casefile-workerd/node_modules/.bin/workerd test -I /tmp/casefile-workerd/node_modules tests/workerd/config.capnp '*:default'
 ``` Проверяется реальный
 compiled Worker, native Request/fetch/Response, успешные шесть синтетических reads
-и отказ для redirect. В test config нет sockets или внешнего network service;
+и отказ для redirect; v3 добавляет provider selection и backoff regressions. В test config нет sockets или внешнего network service;
 upstream service и KV stub синтетические. Это дополнительная локальная проверка,
 не замена hosted smoke и не новый production binding.
 
@@ -83,14 +93,34 @@ upstream service и KV stub синтетические. Это дополнит�
 Не создавайте API token/OAuth grant и не меняйте billing, тариф или custom domain.
 
 Pages не предоставляет использованные в необязательном Workers варианте
-Rate Limiting bindings; KV — поддерживаемый dashboard binding.
-KV хранит единственный marker `casefile-cooldown` с TTL 90 секунд,
-без IP, hashes или истории. API читает marker и пишет его **до** upstream reads.
-Общий cooldown может дать 429 другим посетителям демо. KV eventually consistent:
-это не atomic global lock и не строгая глобальная квота; параллельные допуски
-в разных locations возможны. Rate/quota/storage errors дают 503 без upstream reads. Каждый admission get/put
-ограничен 2 секундами; timeout освобождает local capacity без upstream reads.
-Неотменяемый KV put может позднее записать только cooldown marker.
+Rate Limiting bindings; KV — поддерживаемый dashboard binding. В v3 **RATE_GATE
+обязателен для любого live Worker**, в том числе при CASE_IP/CASE_LOCATION: они
+только дополняют KV, но не могут сохранять upstream Retry-After между requests.
+KV хранит единственный marker `casefile-cooldown`, без IP, hashes или истории.
+До upstream reads ставится общий cooldown 90 секунд. Другие посетители могут
+получить 429. При upstream HTTP429 или HTTP503 исходный `Retry-After` сохраняется
+в observation. Повторов нет. Валидные delta-seconds или IMF-fixdate до 24 часов
+продлевают cooldown, минимум до 90 секунд. Отсутствующий header оставляет 90
+секунд; неверное значение или срок больше 24 часов ставит постоянный fail-closed
+marker. Тогда оператор должен проверить provider guidance и решить, когда можно
+снять только этот marker в существующем KV; приложение не удаляет его само.
+
+Формат v3 marker: JSON `{v:1,until:<epoch-ms>}` или `{v:1,blocked:true}` без TTL
+для постоянного запрета. Старый marker `1` также запрещает сбор. Перед продлением
+повторно читается уже видимый marker: более длинный/постоянный запрет не сокращается.
+KV eventually consistent, поэтому это не atomic global lock: гонки между разными
+locations всё ещё возможны. Admission/extension get/put ограничены 2 секундами;
+ошибки/timeout закрывают текущий request с503. Если продление не сохранилось,
+прежний marker может истечь раньше требуемого provider срока: постоянный backoff
+не гарантирован при недоступном storage. При такой ошибке оператор должен отключить
+live до проверки. Неотменяемая KV запись может завершиться позднее.
+HTTP200 с upstream429/503 остаётся наблюдением ошибки, не успешным evidence case.
+Чтобы не нарушать [лимит KV один write в секунду на key](https://developers.cloudflare.com/kv/platform/limits/),
+перед extension приложение при необходимости ждёт до 1,1 секунды после завершения
+admission put, затем перечитывает marker. Это ограниченное дополнительное network-wait
+время, не upstream retry. Оно устраняет собственные слишком быстрые writes одного
+request, но не делает конкурентные записи разных isolates атомарными.
+
 [KV consistency](https://developers.cloudflare.com/kv/concepts/how-kv-works/) и
 [лимиты Free KV](https://developers.cloudflare.com/kv/platform/limits/).
 
@@ -105,7 +135,7 @@ logIndex до 8 цифр, same-origin браузерные заголовки. �
 Публичный Worker ограничивает **каждый upstream-ответ 128 KiB** вместо локального 1 MiB. Это не лимит суммарного API JSON: source, Iris и destination могут вместе занять около 384 KiB.
 Oversized receipts сохраняют response_too_large; результат не превращается в
 verified. Для таких кейсов используйте CLI. Остальные лимиты: 6 fixed reads,
-8s/read, 40s/case, без retries/redirect. Только Base/Arc official RPC и
+8s/read, 40s/case, без retries/redirect. Только выбранный allowlisted Base RPC, Arc official RPC и
 Iris GET /v2/messages/6. Нет signing/write methods/arbitrary URLs/chain scans.
 
 API и static assets имеют no-store/CSP/nosniff/referrer headers.
@@ -129,7 +159,7 @@ Node tests, build и offline replay не доказывают соблюдени
 Проверьте 200, actual provider observations/timestamps/provenance, recomputed
 source/Circle/destination binding, JSON/Markdown export, отсутствие error 1102
 и доступный runtime CPU показатель. Не создавайте оплаченный перевод.
-Повторный click должен дать 429 с Retry-After 90 и сохранить предыдущую историю.
+Повторный click должен дать 429 с Retry-After (обычно 90 секунд) и сохранить предыдущую историю.
 Проверьте 128 KiB response boundary и provider 429/null/timeout как evidence в 200;
 adapter-level 429/503 не должны становиться fake observations.
 
@@ -144,10 +174,14 @@ spendability, finality или hook completion. Imported JSON остаётся un
 ## Необязательный Workers assets вариант
 
 wrangler.json использует CASE_IP 2/min и CASE_LOCATION 20/min, fail-closed
-platform bindings и LIVE_ENABLED=false. Его deploy требует уже разрешённой
-Wrangler-авторизации; для согласованного Pages dashboard route это не нужно.
-Namespace IDs 610091/610092 нужно проверить на коллизии до использования.
-Rate bindings eventually consistent per-location; строгой глобальной квоты нет.
+platform bindings и LIVE_ENABLED=false. В v3 live дополнительно требует RATE_GATE;
+этот пример конфигурации ещё не содержит конкретного KV namespace ID. Настройте
+существующий разрешённый namespace перед включением live; без него API вернёт503.
+Rate bindings не заменяют KV backoff и остаются дополнительной защитой.
+Deploy этого варианта требует уже разрешённой Wrangler-авторизации; для текущего
+Pages dashboard route это не нужно. Namespace IDs 610091/610092 нужно проверить
+на коллизии до использования. Rate bindings eventually consistent per-location;
+строгой глобальной квоты нет.
 
 Откат — предыдущая проверенная deployment либо удаление только Pages project.
 У cooldown KV нет пользовательских данных; удалять его следует только если
