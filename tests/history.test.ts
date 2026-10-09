@@ -7,6 +7,7 @@ import {
   importCasefile,
   serializeCasefile,
   MAX_CASEFILE_BYTES,
+  type Input,
 } from "../src/casefile";
 import { fixture, obs, hash } from "./helpers";
 import { collect } from "../src/collector";
@@ -143,4 +144,12 @@ test("collector stops on malformed chain envelopes and retains exact status", as
   assert.equal(input.destinationChain.status, "invalid_rpc_response");
   assert.equal(input.source.status, "not_requested");
   assert.equal(input.iris.status, "not_requested");
+});
+
+test("Retry-After provider evidence survives JSON import/export and Markdown export", () => {
+  const input: Input = fixture();
+  input.sourceChain = { status: "http_429", observedAt: new Date().toISOString(), provenance: "https://base-rpc.publicnode.com", value: null, httpStatus: 429, retryAfter: "120" };
+  const file = appendCasefile(input);
+  assert.equal(importCasefile(serializeCasefile(file)).observations[0].input.sourceChain.retryAfter, "120");
+  assert.ok(markdown(file).includes('"retryAfter":"120"'));
 });

@@ -112,3 +112,25 @@ npm.cmd run cli -- --source 0x768ee6d00bf6f8c34d1821c87d2126a3e52d880143a5e794c1
 ```
 
 Будущий outage, changed head или недоступный receipt должны сохраняться как новое наблюдение, не заменять записанное ранее. Не создавайте собственный перевод за деньги ради smoke.
+
+## Публичное демо Cloudflare
+
+Адрес: [arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/).
+Выберите Synthetic scenario и нажмите Replay fixture для синтетического примера,
+либо импортируйте сохранённый JSON casefile, изучите результаты и экспортируйте
+JSON/Markdown. Imports остаются unverified; fixture не выдаётся за live evidence.
+
+**Live на сайте заблокирован внешним provider.** На 2026-10-09 10:54:57.230 UTC
+v3 deployment 88494ab0-50cd-443d-9edb-49e4a5ab1c7d с фиксированным PublicNode
+прочитал правильные Base/Arc chain IDs, затем получил HTTP403 на source receipt.
+Точная причина отказа неизвестна. Iris/destination/head не запрашивались,
+повторов или смены endpoint после отказа не было. Предыдущий официальный Base RPC
+возвращал 429. Live отключён: production deployment `5c70999a-62cf-406f-b679-22a58f1dae6a`,
+тот же проверенный v3 ZIP, `LIVE_ENABLED=false`. Offline fixture работает;
+контрольная попытка collection вернула503 и сохранила предыдущие observations. Частичный трёхзапросный case занял 7 ms CPU,
+но CPU полного кейса и максимального payload не подтверждён.
+
+Для восстановления нужен разрешённый RPC service access, совместимый с Cloudflare.
+Аккаунт/credentials, если необходимы, требуют настройки и одобрения пользователя;
+затем нужна новая ограниченная live/CPU проверка. Не создавайте перевод ради теста.
+Настройки, Retry-After и границы: [docs/CLOUDFLARE_RU.md](docs/CLOUDFLARE_RU.md).

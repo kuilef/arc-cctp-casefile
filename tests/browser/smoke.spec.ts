@@ -161,3 +161,40 @@ test("imported live claims remain visibly unverified after explicit selection an
     exported.observations.every((o: any) => o.origin === "imported-unverified"),
   ).toBe(true);
 });
+
+test("collection labels fixed providers honestly and displays server Retry-After without retrying", async ({ page }) => {
+  let calls = 0;
+  let release: (() => void) | undefined;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/case?**", async route => {
+    calls++;
+    await pending;
+    await route.fulfill({ status: 429, headers: { "Content-Type": "application/json", "Retry-After": "300" }, body: JSON.stringify({ error: "demo_cooldown" }) });
+  });
+  await page.goto(url);
+  await page.getByRole("button", { name: "Replay fixture" }).click();
+  await expect(page.locator(".history-row")).toHaveCount(1);
+  await page.locator("#collect").click();
+  await expect(page.locator("#notice")).toHaveText("Reading fixed allowlisted RPCs and Circle Iris…");
+  release?.();
+  await expect(page.locator("#notice")).toContainText("wait at least 300 seconds");
+  await expect(page.locator(".history-row")).toHaveCount(1);
+  await expect(page.locator("#collect")).toBeEnabled();
+  expect(calls).toBe(1);
+});
+test("persistent upstream cooldown explains operator review without inventing a retry time", async ({ page }) => {
+  let calls = 0;
+  await page.route("**/api/case?**", async route => {
+    calls++;
+    await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "upstream_cooldown_requires_operator" }) });
+  });
+  await page.goto(url);
+  await page.getByRole("button", { name: "Replay fixture" }).click();
+  await expect(page.locator(".history-row")).toHaveCount(1);
+  await page.locator("#collect").click();
+  await expect(page.locator("#notice")).toContainText("Provider backoff requires operator review");
+  await expect(page.locator("#notice")).not.toContainText("90 seconds");
+  await expect(page.locator(".history-row")).toHaveCount(1);
+  await expect(page.locator("#collect")).toBeEnabled();
+  expect(calls).toBe(1);
+});

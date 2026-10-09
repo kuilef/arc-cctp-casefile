@@ -18,9 +18,26 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
+      - run: npm run build:pages
+      - run: npm run test:pages
+      - name: Check compiled Worker in pinned workerd
+        if: runner.os == 'Linux'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/casefile-workerd" --no-save --package-lock=false workerd@1.20261006.1
+          "$RUNNER_TEMP/casefile-workerd/node_modules/.bin/workerd" test -I "$RUNNER_TEMP/casefile-workerd/node_modules" tests/workerd/config.capnp '*:default'
       - run: npm audit --audit-level=high
       - if: runner.os == 'Linux'
         run: npx playwright install --with-deps chromium
       - if: runner.os == 'Linux'
         run: npm run smoke
+      - name: Record tested Pages file checksums
+        if: runner.os == 'Linux'
+        run: find dist -type f -print0 | sort -z | xargs -0 sha256sum
+      - name: Upload tested Cloudflare Pages directory
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-cctp-casefile-pages-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
