@@ -119,7 +119,7 @@ get<HTMLFormElement>("case-form").addEventListener("submit", async (e) => {
     const r = await fetch(`/api/case?${params}`, { credentials: "omit" });
     if (!r.ok)
       throw Error(
-        `Local request failed (${r.status}). Start the loopback server for live collection.`,
+        `Collection unavailable (${r.status}). A 429 means the demo is busy; wait at least 90 seconds. Other failures leave earlier observations intact.`,
       );
     consume(await r.json(), "live-collected");
   } catch (err) {

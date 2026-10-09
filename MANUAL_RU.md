@@ -112,3 +112,7 @@ npm.cmd run cli -- --source 0x768ee6d00bf6f8c34d1821c87d2126a3e52d880143a5e794c1
 ```
 
 Будущий outage, changed head или недоступный receipt должны сохраняться как новое наблюдение, не заменять записанное ранее. Не создавайте собственный перевод за деньги ради smoke.
+
+## Публичное демо Cloudflare
+
+Отдельный безопасный Worker и бесплатная публикация: [docs/CLOUDFLARE_RU.md](docs/CLOUDFLARE_RU.md).

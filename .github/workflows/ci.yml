@@ -18,7 +18,8 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
+      - run: npm run build:pages
+      - run: npm run test:pages
       - run: npm audit --audit-level=high
       - if: runner.os == 'Linux'
         run: npx playwright install --with-deps chromium

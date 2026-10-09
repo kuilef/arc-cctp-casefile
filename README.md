@@ -36,6 +36,10 @@ Coverage is **one user-provided destination receipt**, with zero scanned blocks.
 
 Each snapshot records a local origin: `fixture-replay`, `live-collected`, or `imported-unverified`. Import always forces the last marker, including subsequent message selection; an input file's `mode` cannot claim local collection. JSON exports are unsigned observations. A shared **2,000,000 UTF-8 byte / 100 observation** limit applies to append, export and import. Exceeding either limit rejects the new snapshot and preserves earlier data; export the history and start a new casefile. Large receipts can reach the byte limit well before 100 snapshots.
 
+## Cloudflare Pages preparation
+
+The separate Pages adapter is built with `npm run build:pages`; validate its compiled bundle with `npm run test:pages`. The output is a Direct Upload-ready `dist/` with `_worker.js`, API-only routing, static assets and synthetic replay fixtures. Deployment instructions, the required free KV binding, fail-closed defaults, and the mandatory Cloudflare CPU/live smoke are in [docs/CLOUDFLARE_RU.md](docs/CLOUDFLARE_RU.md). Building locally does not establish a successful deployment or compliance with the Free CPU limit.
+
 ## CLI
 
 ```sh
