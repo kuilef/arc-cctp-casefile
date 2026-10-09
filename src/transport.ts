@@ -47,8 +47,14 @@ export function createTransport(
             : { Accept: "application/json" },
           signal: controller.signal,
           credentials: "omit",
-          redirect: "error",
+          // workerd supports manual, not error; never follow another origin.
+          redirect: "manual",
         });
+        if (response.status >= 300 && response.status < 400)
+          return observation(`http_${response.status}`, url, null, {
+            httpStatus: response.status,
+            error: "redirect_refused",
+          });
         if (!response.ok)
           return observation(`http_${response.status}`, url, null, {
             httpStatus: response.status,

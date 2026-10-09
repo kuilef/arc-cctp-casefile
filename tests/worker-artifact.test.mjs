@@ -107,7 +107,7 @@ for (const bytes of [131072, 131073]) {
       cancelled = false;
     globalThis.fetch = async (url, init) => {
       calls++;
-      assert.equal(init.redirect, "error");
+      assert.equal(init.redirect, "manual");
       assert.equal(init.credentials, "omit");
       if (
         String(url).startsWith(
@@ -196,3 +196,38 @@ for (const bytes of [131072, 131073]) {
     }
   });
 }
+
+test("Compiled Worker rejects upstream redirects as evidence before collecting receipts", async () => {
+  const oldFetch = globalThis.fetch;
+  const urls = [];
+  globalThis.fetch = async (url, init) => {
+    urls.push(String(url));
+    assert.equal(init.redirect, "manual");
+    assert.equal(init.credentials, "omit");
+    return new Response(null, {
+      status: 302,
+      headers: { Location: "http://127.0.0.1/private" },
+    });
+  };
+  try {
+    const response = await worker.fetch(request(), env());
+    assert.equal(response.status, 200);
+    const input = await response.json();
+    for (const chain of [input.sourceChain, input.destinationChain]) {
+      assert.equal(chain.status, "http_302");
+      assert.equal(chain.httpStatus, 302);
+      assert.equal(chain.error, "redirect_refused");
+      assert.equal(chain.value, null);
+    }
+    assert.deepEqual(urls.sort(), [
+      "https://mainnet.base.org",
+      "https://rpc.mainnet.arc.io",
+    ]);
+    assert.equal(input.source.status, "not_requested");
+    assert.equal(input.iris.status, "not_requested");
+    assert.equal(input.destination.status, "not_requested");
+    assert.equal(input.head.status, "not_requested");
+  } finally {
+    globalThis.fetch = oldFetch;
+  }
+});

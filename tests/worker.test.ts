@@ -47,7 +47,7 @@ test("Worker preserves real collector observations and six fixed upstream reads"
   const urls: string[] = [];
   const fetcher: typeof fetch = async (url, init) => {
     urls.push(String(url));
-    assert.equal(init?.redirect, "error");
+    assert.equal(init?.redirect, "manual");
     assert.equal(init?.credentials, "omit");
     if (String(url).startsWith("https://iris-api.circle.com/v2/messages/6?transactionHash=")) {
       return Response.json({ messages: [] });

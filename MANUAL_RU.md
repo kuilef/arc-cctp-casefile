@@ -115,4 +115,6 @@ npm.cmd run cli -- --source 0x768ee6d00bf6f8c34d1821c87d2126a3e52d880143a5e794c1
 
 ## Публичное демо Cloudflare
 
-Отдельный безопасный Worker и бесплатная публикация: [docs/CLOUDFLARE_RU.md](docs/CLOUDFLARE_RU.md).
+Опубликованный адрес: [arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/). На 2026-10-09 10:06:23 UTC live проверка обнаружила несовместимый `redirect: "error"`: chain reads вернули `network_error`. Исправление на manual mode с отказом для всех 3xx проверено локально и в workerd; его публикация, успешный hosted live smoke и Cloudflare CPU ещё не подтверждены.
+
+Отдельный Worker, настройки и границы проверки: [docs/CLOUDFLARE_RU.md](docs/CLOUDFLARE_RU.md).

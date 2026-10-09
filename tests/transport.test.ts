@@ -123,5 +123,58 @@ test("upstream requests omit credentials and refuse redirects", async () => {
   await t.rpc("base", "eth_chainId", []);
   assert.equal(url, "https://mainnet.base.org");
   assert.equal(opts.credentials, "omit");
-  assert.equal(opts.redirect, "error");
+  assert.equal(opts.redirect, "manual");
 });
+
+for (const kind of ["rpc", "iris"] as const) {
+  test(`${kind} rejects 3xx without reading, following or retrying`, async () => {
+    for (const status of [300, 301, 302, 303, 304, 305, 306, 307, 308, 399]) {
+      const urls: string[] = [];
+      let reads = 0;
+      const t = createTransport(
+        async (url, init) => {
+          urls.push(String(url));
+          assert.equal(init?.redirect, "manual");
+          assert.equal(init?.credentials, "omit");
+          return new Response(
+            status === 304
+              ? null
+              : new ReadableStream(
+                  {
+                    pull() {
+                      reads++;
+                      throw Error("redirect body must not be read");
+                    },
+                  },
+                  { highWaterMark: 0 },
+                ),
+            {
+              status,
+              headers: { Location: "http://127.0.0.1/private" },
+            },
+          );
+        },
+        { maxRequests: 1 },
+      );
+      const read = () =>
+        kind === "rpc" ? t.rpc("base", "eth_chainId", []) : t.iris(hash("1"));
+      const result = await read();
+      assert.equal(result.status, `http_${status}`);
+      assert.equal(result.httpStatus, status);
+      assert.equal(result.error, "redirect_refused");
+      assert.equal(result.value, null);
+      assert.equal(
+        result.provenance,
+        kind === "rpc"
+          ? "https://mainnet.base.org"
+          : `https://iris-api.circle.com/v2/messages/6?transactionHash=${hash("1")}`,
+      );
+      assert.equal(Number.isNaN(Date.parse(result.observedAt)), false);
+      assert.deepEqual(urls, [result.provenance]);
+      assert.equal(reads, 0);
+      assert.equal(t.requestCount(), 1);
+      assert.equal((await read()).status, "budget_exhausted");
+      assert.equal(urls.length, 1);
+    }
+  });
+}

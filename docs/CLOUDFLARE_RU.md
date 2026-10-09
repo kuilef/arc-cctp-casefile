@@ -5,6 +5,30 @@
 message selection, история и exports остаются в браузере. Протокольная логика
 и ограничения доказательств не изменены.
 
+## Текущее состояние публикации: 2026-10-09
+
+Адрес: [https://arc-cctp-casefile.pages.dev/](https://arc-cctp-casefile.pages.dev/).
+Deployment `c9038ac9-5aae-492c-aa2b-6c73cef28125`, `LIVE_ENABLED=true`,
+`RATE_GATE` настроен. Hosted проверка в **10:06:23 UTC** сохранила оба chain reads
+как `network_error`: workerd не принимает `redirect: "error"`. Поэтому этот
+deployment пока не является подтверждённым рабочим live demo.
+
+В текущем source исправлен общий transport: `redirect: "manual"`, явный отказ
+для каждого 3xx до чтения body. Результат содержит `status: "http_<code>"`,
+`httpStatus`, `error: "redirect_refused"`, исходный provenance и timestamp;
+`value` остаётся null. Раньше Node обычно давал `network_error` при redirect.
+Ни Location, ни response body не читаются, повторов и переходов нет.
+Это сохраняет fixed-origin/read-only ограничения и прежние budgets.
+[Cloudflare Request manual mode](https://developers.cloudflare.com/workers/runtime-apis/request/#properties)
+и [workerd implementation](https://github.com/cloudflare/workerd/blob/main/src/workerd/api/http.c%2B%2B)
+подтверждают выбранное поведение.
+
+Source/compiled regressions и два настоящих workerd smoke проходят локально.
+**Публикация исправления, успешный hosted live smoke и actual Cloudflare CPU
+ещё ожидаются.** Синтетический workerd smoke не измеряет Cloudflare CPU,
+production KV или реальный provider egress; максимум 128 KiB также остаётся
+runtime-непроверенным. План проверки и fail-closed fallback ниже остаются обязательными.
+
 ## Сборка и тесты
 
 Из корня, Node.js 22:
@@ -25,11 +49,31 @@ build:pages создаёт dist с assets, fixtures, _headers, _routes.json и
 _routes.json включает Worker только для /api/*; static replay остаётся
 статическим и не тратит invocation на Worker.
 
+При наличии уже установленного workerd можно повторить отдельный socket-free
+runtime test после `build:pages`:
+
+```sh
+workerd test -I /path/to/node_modules tests/workerd/config.capnp '*:default'
+```
+
+Путь `-I` должен содержать пакет `workerd/workerd.capnp`. Проверенная версия npm
+пакета — **workerd@1.20261006.1** (binary `workerd 2026-10-06`). Linux CI ставит
+её в отдельный временный prefix, не меняя package.json/package-lock проекта:
+
+```sh
+npm install --prefix /tmp/casefile-workerd --no-save --package-lock=false workerd@1.20261006.1
+/tmp/casefile-workerd/node_modules/.bin/workerd test -I /tmp/casefile-workerd/node_modules tests/workerd/config.capnp '*:default'
+``` Проверяется реальный
+compiled Worker, native Request/fetch/Response, успешные шесть синтетических reads
+и отказ для redirect. В test config нет sockets или внешнего network service;
+upstream service и KV stub синтетические. Это дополнительная локальная проверка,
+не замена hosted smoke и не новый production binding.
+
 ## Direct Upload и бесплатные bindings
 
 Используйте подтверждённый аккаунт на Workers Free и Pages Direct Upload.
 Загрузите **содержимое dist**, не родительскую папку. Адрес после публикации:
-`arc-cctp-casefile.pages.dev`, если имя свободно.
+[arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/) (проект уже создан).
 [Dashboard поддерживает prebuilt _worker.js](https://developers.cloudflare.com/pages/get-started/direct-upload/).
 
 В проекте Settings → Bindings создайте/выберите отдельный бесплатный KV namespace

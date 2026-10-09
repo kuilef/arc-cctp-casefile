@@ -2,7 +2,7 @@
 
 A local, read-only evidence report for an **existing Base mainnet → Arc mainnet USDC transfer**. Give it a source transaction hash and, optionally, a known destination transaction hash. Export a support case with raw public observations, timestamps, provider origins and explicit evidence limits.
 
-**Current validation: offline replay plus one existing public Base → Arc completed-transfer smoke**, collected on 2026-10-08 at 21:46:23 UTC using six bounded reads. Source, Iris and destination event evidence were bound; [recorded JSON](examples/live-2026-10-08.casefile.json) and [Markdown](examples/live-2026-10-08.casefile.md) preserve the observations. This is provider-observed execution within one supplied receipt, with the limitations below. No deployment was made.
+**Current validation: offline replay plus one existing public Base → Arc completed-transfer smoke**, collected on 2026-10-08 at 21:46:23 UTC using six bounded reads. Source, Iris and destination event evidence were bound; [recorded JSON](examples/live-2026-10-08.casefile.json) and [Markdown](examples/live-2026-10-08.casefile.md) preserve the observations. This is provider-observed execution within one supplied receipt, with the limitations below. The original local smoke did not test a deployed service.
 
 ## Run
 
@@ -36,7 +36,9 @@ Coverage is **one user-provided destination receipt**, with zero scanned blocks.
 
 Each snapshot records a local origin: `fixture-replay`, `live-collected`, or `imported-unverified`. Import always forces the last marker, including subsequent message selection; an input file's `mode` cannot claim local collection. JSON exports are unsigned observations. A shared **2,000,000 UTF-8 byte / 100 observation** limit applies to append, export and import. Exceeding either limit rejects the new snapshot and preserves earlier data; export the history and start a new casefile. Large receipts can reach the byte limit well before 100 snapshots.
 
-## Cloudflare Pages preparation
+## Cloudflare Pages demo and pending runtime fix
+
+Published URL: [arc-cctp-casefile.pages.dev](https://arc-cctp-casefile.pages.dev/). Deployment `c9038ac9-5aae-492c-aa2b-6c73cef28125` has `LIVE_ENABLED=true` and `RATE_GATE` configured. The hosted check at **2026-10-09 10:06:23 UTC** reached the collector but both chain reads failed because workerd rejects `redirect: "error"`. The manual-mode fix in this source has passed local regressions, including real workerd, but **redeployment, hosted live success and Cloudflare CPU verification are pending**. The existing successful local recording is not a hosted success claim.
 
 The separate Pages adapter is built with `npm run build:pages`; validate its compiled bundle with `npm run test:pages`. The output is a Direct Upload-ready `dist/` with `_worker.js`, API-only routing, static assets and synthetic replay fixtures. Deployment instructions, the required free KV binding, fail-closed defaults, and the mandatory Cloudflare CPU/live smoke are in [docs/CLOUDFLARE_RU.md](docs/CLOUDFLARE_RU.md). Building locally does not establish a successful deployment or compliance with the Free CPU limit.
 
@@ -67,7 +69,7 @@ CI runs checks on Ubuntu and Windows / Node 22; Chromium UI smoke runs on Ubuntu
 
 Fixed profiles only: Base `8453 / domain 6`, Arc `5042 / domain 26`. Both chain IDs must match before collection. Fixed official origins: `https://mainnet.base.org`, `https://rpc.mainnet.arc.io`, `https://iris-api.circle.com` (documented `GET /v2/messages/6?transactionHash=…`). RPC HTTP POST carries only allowlisted read methods. No Iris POST, arbitrary URLs, signing, minting, recovery, wallet connection, authentication, credentials, paid API or broad chain scan.
 
-Per case: at most 6 upstream requests, 8 seconds per request, 40 seconds total, 1 MiB per response, no retry on 429. The server binds only `127.0.0.1`, validates Host/Origin, allows one active collection, serves allowlisted built assets/fixtures and logs only its launch URL. Do not expose this server on a public interface. Raw exports contain public recipient/activity data; storage and sharing are your decision. Imports are untrusted provider observations, not authenticated evidence.
+Per case: at most 6 upstream requests, 8 seconds per request, 40 seconds total, 1 MiB per response, no retry on 429. Redirects use manual mode and every 3xx is rejected as `http_<status>` with `error: "redirect_refused"`; no redirect body or target is read. The server binds only `127.0.0.1`, validates Host/Origin, allows one active collection, serves allowlisted built assets/fixtures and logs only its launch URL. Do not expose this server on a public interface. Raw exports contain public recipient/activity data; storage and sharing are your decision. Imports are untrusted provider observations, not authenticated evidence.
 
 ## Sources, licensing and related work
 
